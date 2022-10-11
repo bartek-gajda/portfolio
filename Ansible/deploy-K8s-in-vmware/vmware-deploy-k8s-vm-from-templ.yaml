@@ -1,0 +1,141 @@
+---
+# playbook creates k8s cluster in vmware 
+# first it deploy VMs from template
+# second it prepares vm for installling kubernetes
+# finnaly it creates inventory for kubespray and run it
+
+# playbook deploy-uje zadana ilosc maszyn wirtualnych z templete w vmware
+# deploy-owanie jest sekwencyjne, po 1 maszynie, gdyz template ma na sztywno ustawiony adres ip
+# po uruchomieniu pojedynczej maszyny konfiguriowany jest OS - adres ip, hostname
+# i nastepuje c.d deploymentu az do ostatniej maszyny.
+# W ostatniej czesci playbooka nastepuje tworzenie klastra k8s na nowych VMkach
+# z wytkorzystaniem kubespray
+# co poprzedzone jest zbudowaniem dynamicznego inventory dla kubespray
+#
+# (c) Bartek Gajda 2021-2022
+#
+# przykladowe polecenie uruchamiajace playbooka
+# 
+# ansible-playbook  -i kubespray/inventory/mycluster/hosts.yml  -i inventory-vm.yaml -i inventory-vmware.yaml -i ../../vault/vault-inv-vmware.yaml --vault-id dev@../../vault-pass/vault_pass  vmware-deploy-k8s-vm-from-templ.yaml [--skip-tags "kubespray"]
+#
+
+- name: vmware test == CZ. I - przygotowanie zmiennych i plikow ==
+  hosts: localhost
+  serial: 1
+  gather_facts: no
+  tasks:
+  - name: odczyt zmiennych
+    include_vars: vars.yaml
+  - name: Add all new being created hosts to inventory 
+    add_host:
+      name: "{{ hostname_pocz+(hostname_num_pocz+item)|string }}"
+      ansible_host: "{{ hostname_pocz+(hostname_num_pocz+item)|string }}"
+      ansible_user: "{{ ansible_user }}"
+      ansible_connection: ssh
+      numer_lp: "{{ item }}"
+      groups: vm-new
+    loop: "{{ range(0, vm_ilosc )|list }}"
+  - name: Add template host to inventory 
+    add_host:
+      name: "{{ adres_template_host }}"
+      ansible_host: "{{ adres_template_host }}"
+      ansible_user: "{{ ansible_user }}"
+      ansible_connection: ssh
+  - name: okresl ilosc instancji etcd
+    set_fact:
+      etcd_ilosc: "{{ 3 | int if vm_ilosc >2 else 1 }}"
+  - debug: var=etcd_ilosc
+  - name: usuwa plik ze starym inventory (gdyby istnial z poprzedniego przebiegu)
+    ansible.builtin.file:
+      path: ./kubespray/inventory/mycluster/hosts.yml
+      state: absent
+  - name: utworz plik hosts dla kubespray
+    ansible.builtin.template:
+      src: "hosts.j2"
+      dest: "./kubespray/inventory/mycluster/hosts.yml"
+    delegate_to: localhost
+- name: vmware deploy  == CZ. II - tworzenie i konfiguracja  VMek ==
+  hosts: vm-new
+  serial: 1
+  gather_facts: no
+  tasks:
+  - name: odczyt zmiennych
+    include_vars: vars.yaml
+  - block:
+    - name: ustaw wartosci poczatkowe zmiennych
+      ansible.builtin.set_fact:
+        adres_ustaw: "{{ adres_pocz_net+(adres_pocz_ip+numer_lp)|string }}"
+        hostname_ustaw: "{{ hostname_pocz+(hostname_num_pocz+numer_lp)|string }}"
+#    - debug: var=adres_template_host
+    - name: sprawdz czy przypadkiem nie istnieje juz taka sama VM i wtedy STOP
+      vmware_guest_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        validate_certs: False
+        name: "{{ vm_name_prefix + '-' + inventory_hostname }}"
+        datacenter: "{{ datacenter }}"
+      register: vm_info
+      ignore_errors: yes
+      delegate_to: localhost
+    - name: sprawdz wynik istnienia VMki i STOP jesli istnieje
+      debug:
+        msg: "STOP jesli istnieje juz VM o zadanej nazwie"
+      failed_when: "'non-existing VM' not in vm_info.msg "
+    - name: Create a VM from a template
+      vmware_guest:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        validate_certs: False
+        name: "{{ vm_name_prefix + '-' + inventory_hostname }}"
+        template: "{{ vm_template }}"
+        datacenter: "{{ datacenter }}"
+        folder: "{{ vm_folder }}"
+        state: poweredon
+        wait_for_ip_address: yes
+      delegate_to: localhost
+    - name: ===== wait_for_connection
+      wait_for_connection:
+        delay: 10
+        timeout: 60
+      delegate_to: "{{ adres_template_host }}"
+    - hostname:
+        name: "{{ hostname_ustaw }}"
+      delegate_to: "{{ adres_template_host }}"
+    - name: ustaw adres ip
+      lineinfile:
+        path: "/etc/network/interfaces"
+        regexp: '^\s*address.*'
+        line: "{{ '\t' + 'address ' + adres_ustaw + '/' + adres_maska|string }}"
+        state: present
+      delegate_to: "{{ adres_template_host }}"
+    - name: REBOOT VM
+      command: /sbin/reboot
+      ignore_errors: yes
+      delegate_to: "{{ adres_template_host }}"
+    when: inventory_hostname != adres_template_host
+- name: == cz. III - WAIT for VM ready ==
+  hosts: vm-new
+  gather_facts: no
+  tasks:
+  - name: ===== wait_for_connection
+    wait_for_connection:
+      delay: 20
+      timeout: 60
+#  - debug: var=hostvars[inventory_hostname]
+- name: kubespray == cz. IV - Refresh inventory ==
+  hosts: local
+  serial: 1
+  gather_facts: no
+  run_once: true
+  tasks:
+  - debug: var=ansible_hostname
+  - name: Wait 300 seconds, but only start checking after 60 seconds
+    meta: refresh_inventory
+    run_once: true
+- name: kubespray == cz. V - startujemy KUBESPRAY ==
+  import_playbook: kubespray/cluster.yml
+  tags:
+  - kubespray
+  # jezeli chcemy uruchomic bez kubespraya, w lini polecen dodajemy: --skip-tags "kubespray"

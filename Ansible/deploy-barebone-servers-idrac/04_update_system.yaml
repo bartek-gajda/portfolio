@@ -1,0 +1,20 @@
+--- # przygotowanie hosta do uruchamiania ansible
+# Bartek Gajda 2020-05
+
+- name: zmiana hostname na prawidłowy, aktualizacja pakietów systemu
+  hosts: all 
+  gather_facts: no
+  tasks:
+   - hostname:
+       #name: "{{inventory_hostname|regex_replace('\\s','')}}"
+       name: "{{inventory_hostname}}"
+   - name: dodaj secondary DNS
+     lineinfile:
+       path: /etc/resolv.conf
+       line: nameserver 150.254.173.2
+   - name: upgrade all packages
+     yum: name='*'      state=latest update_cache=yes
+   - name: restart usługi ntpdd
+     service:
+       name: ntpd
+       state: restarted

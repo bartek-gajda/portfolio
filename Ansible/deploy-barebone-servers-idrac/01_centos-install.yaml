@@ -1,0 +1,46 @@
+- name: instaluj Centos na serwerze zdalnym iso z katalogu plus przygotowany plik ks.cfg
+  hosts: all
+  serial: 1
+  gather_facts: no
+  connection: local
+  tasks:
+    - name: wyswietl nazwe hosta
+      debug: 
+#        msg: "nazwa inventory-hostname {{ ansible_host }} IP {{ ansible_host }}"
+        msg: "home/bartek/ansible/ks-test_{{ inventory_hostname }}.cfg"
+    - name: generowanie pliku testowego ks-test
+      local_action: template src=/home/bartek/ansible/ks.j2 dest="/home/bartek/ansible/ks-test_{{ inventory_hostname }}.cfg"
+    - name: kopiuj plik ks do docelowego katalogu instalacyjnego
+      local_action: copy src="/home/bartek/ansible/ks-test_{{ inventory_hostname }}.cfg" dest=/mnt/centos-install/ks.cfg
+    - name: "Booting to Network Operating System image"
+      block:
+        - name: deployuje OS
+          idrac_os_deployment:
+            idrac_ip: "{{ idrac_ip }}"
+            idrac_password: "{{ idrac_password }}"
+            idrac_user: "{{ idrac_user }}"
+            share_name: "{{ share_name }}"
+            iso_image: "{{ iso_image }}"        
+            expose_duration: 180
+          register: wynik_idrac_deploy
+      rescue:    
+        - debug: var=wynik_idrac_deploy
+        - name: Reset iDRAC
+          dellemc_idrac_reset:
+            idrac_ip:   "{{ idrac_ip }}"
+            idrac_user: "{{ idrac_user }}"
+            idrac_password:  "{{ idrac_password }}"
+          when: "'LC is not ready' in wynik_idrac_deploy.stderr"
+    - name: Czekaj 15 minut na zdalne zainstalowanie i restart OS
+      pause:
+        minutes: 15
+    - name: Zanim zaczniesz nowa instalacje OS, czekaj na odpowiedz ping od restartowanego nowego OS 
+      local_action: shell ping -q -c 1 -W 1 {{ ansible_host }}
+      register: res
+      retries: 60
+      delay: 10
+      until: ('1 received, 0% packet loss' in res.stdout)
+      changed_when: no
+      
+    
+    

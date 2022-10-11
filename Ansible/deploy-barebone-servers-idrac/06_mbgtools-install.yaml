@@ -1,0 +1,20 @@
+- name: instaluje mbgtools - potrzebne do działania GPS
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: pobierz mbgtoolsy
+      get_url:
+        url: https://www.meinbergglobal.com/download/drivers/mbgtools-lx-4.2.10.tar.gz
+        dest: /home/admin     
+    - name: Unarchive a file that is already on the remote machine
+      unarchive:
+        src: /home/admin/mbgtools-lx-4.2.10.tar.gz
+        dest: /home/admin
+        remote_src: yes
+    #- name: rozpakuj  wszystko
+    #  shell: tar xvfz /home/admin/mbgtools-lx-4.2.10.tar.gz
+    - name: skompiluj wszystko
+      shell: cd /home/admin/mbgtools-lx-4.2.10; make clean;make;make install
+    - name: uruchom mbgtoolsy
+      shell: /sbin/modprobe mbgclock; cd /home/admin/mbgtools-lx-4.2.10; make install_svc
+      

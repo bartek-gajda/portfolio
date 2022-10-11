@@ -1,0 +1,25 @@
+- name: kopiuj pliki konfiguracyjne ntp.conf i hosts na nowy system zdalny
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: kopiowanie pliku hosts
+      copy:
+        src: ~/ansible/playbooks/deploy-new/PS-cfg-backup/hosts
+        dest: "/etc/hosts"
+        owner: root
+        group: root
+        mode: u=rw,g=r,o=r
+    - name: kopiowanie pliku ntp.conf
+      copy:
+        src: ~/ansible/playbooks/deploy-new/PS-cfg-backup/ntp.conf
+        dest: "/etc/ntp.conf"
+        owner: root
+        group: root
+        mode: u=rw,g=r,o=r        
+    - name: restart uslugi ntpdd
+      service:
+        name: ntpd
+        state: restarted
+    
+    
+    

@@ -1,0 +1,26 @@
+--- # przygotowanie hosta do uruchamiania ansible
+# Bartek Gajda 2020-05
+
+- name: prepare all hosts for using Ansible scripts
+  hosts: all
+  gather_facts: no
+  pre_tasks:
+   - name: yum clean
+     raw: yum clean all
+     ignore_errors: yes
+   - name: yum install pklill
+     raw: yum -y install psmisc
+   - name: kill all yum process and unlock
+     raw: killall yum
+     ignore_errors: yes
+   - name: Remove /var/run/yum.pid
+     raw: rm -f /var/run/yum.pid
+     ignore_errors: yes
+   - name: yum clean
+     raw: yum clean all
+     ignore_errors: yes 
+   - name: yum install epel-release
+     raw: yum -y install epel-release
+   - name: yum install ansible
+     raw: yum -y install ansible
+

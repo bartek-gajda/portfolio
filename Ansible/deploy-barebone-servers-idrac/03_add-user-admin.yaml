@@ -1,0 +1,48 @@
+--- # konfigurowanie  hosta  do dodania ansibla
+# Bartek Gajda 2020-05
+- name: prepare all hosts for using Ansible scripts
+  hosts:  all
+  vars:
+    ansible_user: root
+    ansible_sudo: no
+    ansible_become: no
+    ansible_ssh_common_args: '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'  
+  gather_facts: no
+  tasks:
+    - name: Ensure group "wheel" exists
+      ansible.builtin.group:
+        name: wheel
+        state: present
+    - name: Add the user 'admin' with a bash shell, appending the group 'wheel' and to the user's groups
+      user:
+        name: admin
+        shell: /bin/bash
+        groups: wheel
+        append: yes
+    - name: kopiuje klucz /home/bartek/.ssh/bartek-rfc.pub do uzytkownika /home/admin/.ssh
+      authorized_key:
+        user: admin
+        state: present
+        key: "{{ lookup('file', '/home/bartek/.ssh/bartek-rfc.pub') }}"
+    - name: Ensuring that wheel is able to use sudo without password
+      lineinfile:
+        path: /etc/sudoers
+        regexp: '^%wheel'
+        line: '%wheel ALL=(ALL) NOPASSWD: ALL'
+        #validate: 'visudo -cf %s'
+    - name: ustawianie hasła dla usera admin
+      user:
+        name: admin
+        update_password: always
+        password: "{{ linux_admin_passwd }}" 
+    - name: zablokowania logowania dla root
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^.*PermitRootLogin'
+        line: 'PermitRootLogin no'
+    - name: restart usługi sshd
+      service:
+        name: sshd
+        state: restarted    
+
+        
