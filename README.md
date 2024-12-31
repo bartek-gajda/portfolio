@@ -19,3 +19,6 @@ Several examples of my programs in Python and Ansible
 
 ## PowerShell
 - update-vm-tag.ps1 - Script for udating or deleting tags - based on data taken from csv file
+- update-vm-licensetype.ps1 - script is designed for providing license to VMs in Azure Hybrid Benefit
+docs:  https://learn.microsoft.com/en-us/azure/virtual-machines/windows/hybrid-use-benefit-licensing
+
