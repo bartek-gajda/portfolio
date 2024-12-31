@@ -17,3 +17,5 @@ Several examples of my programs in Python and Ansible
  - check_servers_using_nornir.py - program run several commands on remote servers using Nornir library
  - deploy-barebone-servers-idrac - program compare internal documentation in excel file containing IP assignements against public databases - RIPE whois
 
+## PowerShell
+- update-vm-tag.ps1 - Script for udating or deleting tags - based on data taken from csv file
